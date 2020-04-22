@@ -1,4 +1,5 @@
 import pydicom
+import pydicom
 import glob 
 import numpy as np
 import re

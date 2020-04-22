@@ -1,30 +1,8 @@
 import os
-import matplotlib.pyplot as plt
-import numpy as np
 
-x = np.linspace(0, 5, 10)
-y = x ** 2
-plt.plot(x, y, 'r', x, x ** 4, 'g', x, x ** 4, 'b')
-plt.show()
 
 dir = r'C:\Users\adamyarschenko\Documents\Research\Research_GitHub\Python Scripts'
 os.chdir(dir)
-from complexity_utilities import *
-
-#os.path.exists(r'\\TBMPFS\Research')
-#os.listdir(r'\\TBMPFS\Research\AY\Exported Plans\Plan1')
-
-#Load a patient file.
-"""
-Information can be extracted from the plan (RP.*), structure set (RS.*), or the dose (RD.*) files in the DICOM set. 
-"""
-filepath = r'\\TBMPFS\Research\AY\Exported Plans\Plan1\RD.C039092.BreastJan2019.DIBH_LtBrt.dcm'
-ds = pydicom.filereader.dcmread(filepath)
-#Write contents of DICOM header to a text file. File is stored in current working directory.
-file = open('DICOM Contents.txt', 'w')
-file.write(str(ds))
-file.close()
-
 
 #Example of using DICOM keys to access values.
 '''
@@ -46,6 +24,32 @@ ds.DoseReferenceSequence[0].TargetMaximumDose
 ds[0x300a,0x10][0][0x300a,0x27]
 
 '''
+
+'''
+#Testing the python interactive window
+x = np.linspace(0, 5, 10)
+y = x ** 2
+plt.plot(x, y, 'r', x, x ** 4, 'g', x, x ** 4, 'b')
+plt.show()
+'''
+
+#os.path.exists(r'\\TBMPFS\Research')
+#os.listdir(r'\\TBMPFS\Research\AY\Exported Plans\Plan1')
+
+#Load a patient file.
+"""
+Information can be extracted from the plan (RP.*), structure set (RS.*), or the dose (RD.*) files in the DICOM set. 
+"""
+filepath = r'\\TBMPFS\Research\AY\Exported Plans\Plan1\RS.C039092.BreastJan2019.DIBH_LtBrt.dcm'
+ds = pydicom.filereader.dcmread(filepath)
+
+#Write contents of DICOM header to a text file. File is stored in current working directory.
+with open('DICOM Contents.txt', 'w') as f:
+    f.write(str(ds))
+
+
+
+
 
 
 
