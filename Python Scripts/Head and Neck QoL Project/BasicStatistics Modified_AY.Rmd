@@ -1,0 +1,634 @@
+---
+output:
+  pdf_document: default
+  html_document: default
+editor_options: 
+  chunk_output_type: inline
+---
+
+# 900May2 
+
+Loading libraries and packages.
+
+```{r}
+library("corrplot")
+library(openxlsx)
+library(ggplot2)
+library(gplots)
+library("RColorBrewer")
+library(ggpubr)
+library(randomForest)
+
+library(dplyr)
+library(plyr)
+library(cluster)
+library(factoextra)
+library(fpc)
+library("corrplot")
+library(clustertend)
+library(dendextend)
+```
+
+Loading the dataset
+
+```{r}
+colType = rep("numeric",190)
+colType[c(4:8,11:14,103:106)] = rep("factor",13)
+#Data <- read.csv("Data_1100Apr26.csv", header = TRUE, colClasses = colType)
+#Data <- read.csv("Data_730Apr27.csv", header = TRUE, colClasses = colType)
+#Data <- read.csv("Data_815May1.csv", header = TRUE, colClasses = colType)
+Data <- read_csv("Anonymized Data (Complete - 66-70 Gy).csv")
+attach(Data)
+```
+
+```{r}
+MDASI = Data[,c(111:138)]
+MDADI = Data[,c(147:166)]
+XQ = Data[,c(175:182)]
+
+#MDASI individual scores >= 7 are considered "Severe" as per Cleeland et al., Gunn et al., and Eraj et al. Note: Kamal et al. indicate a cutpoint of >= 6 for severe ratings of the DryMouth question.
+
+MDASI_Pain = Data[,111]
+MDASI_Fatigue = Data[,112]
+MDASI_Nausea = Data[,113]
+MDASI_Sleep = Data[,114]
+MDASI_Distressed = Data[,115]
+MDASI_ShortBreath = Data[,116]
+MDASI_Remembering = Data[,117]
+MDASI_Appetite = Data[,118]
+MDASI_Drowsy = Data[,119]
+MDASI_DryMouth = Data[,120]
+MDASI_Sad = Data[,121]
+MDASI_Vomiting = Data[,122]
+MDASI_NumbTingling = Data[,123]
+MDASI_Mucus = Data[,124]
+MDASI_SwallowChew = Data[,125]
+MDASI_ChokeCough = Data[,126]
+MDASI_VoiceSpeech = Data[,127]
+MDASI_SkinRash = Data[,128]
+MDASI_Constipation = Data[,129]
+MDASI_Taste = Data[,130]
+MDASI_MouthSores = Data[,131]
+MDASI_TeethGums = Data[,132]
+MDASI_Activity = Data[,133]
+MDASI_Mood = Data[,134]
+MDASI_Work = Data[,135]
+MDASI_Relationships = Data[,136]
+MDASI_Walking = Data[,137]
+MDASI_EnjoyLife = Data[,138]
+MDASI_CORE = apply(Data[,c(111:123)],1,max)
+MDASI_HN = apply(Data[,c(124:132)],1,max)
+MDASI_INT = apply(Data[,c(133:138)],1,max)
+MDASI_ALL = apply(Data[,c(111:138)],1,max)
+
+MDASI_Names = c("MDASI_Pain", "MDASI_Fatigue", "MDASI_Nausea", "MDASI_Sleep", "MDASI_Distressed", "MDASI_ShortBreath", "MDASI_Remembering", "MDASI_Appetite", "MDASI_Drowsy", "MDASI_DryMouth", "MDASI_Sad", "MDASI_Vomiting", "MDASI_NumbTingling", "MDASI_Mucus", "MDASI_SwallowChew", "MDASI_ChokeCough", "MDASI_VoiceSpeech", "MDASI_SkinRash", "MDASI_Constipation", "MDASI_Taste", "MDASI_MouthSores", "MDASI_TeethGums", "MDASI_Activity", "MDASI_Mood", "MDASI_Work", "MDASI_Relationships", "MDASI_Walking", "MDASI_EnjoyLife", "MDASI_CORE", "MDASI_HN", "MDASI_INT", "MDASI_ALL")
+MDASI_Combined = cbind(MDASI_Pain, MDASI_Fatigue, MDASI_Nausea, MDASI_Sleep, MDASI_Distressed, MDASI_ShortBreath, MDASI_Remembering, MDASI_Appetite, MDASI_Drowsy, MDASI_DryMouth, MDASI_Sad, MDASI_Vomiting, MDASI_NumbTingling, MDASI_Mucus, MDASI_SwallowChew, MDASI_ChokeCough, MDASI_VoiceSpeech, MDASI_SkinRash, MDASI_Constipation, MDASI_Taste, MDASI_MouthSores, MDASI_TeethGums, MDASI_Activity, MDASI_Mood, MDASI_Work, MDASI_Relationships, MDASI_Walking, MDASI_EnjoyLife, MDASI_CORE, MDASI_HN, MDASI_INT, MDASI_ALL)
+colnames(MDASI_Combined) = MDASI_Names
+
+#MDADI looking for > 10 point difference in scores normalized out of 100 as per Hutcherson et al.
+
+MDADI_GENERAL = Data[,147]*100/5
+MDADI_COMPOSITE = rowSums(Data[,c(148:166)])*100/(5*ncol(Data[,c(148:166)]))
+MDADI_EMOTIONAL = rowSums(Data[,c(148,151,152,154,158,164)])*100/(5*ncol(Data[,c(148,151,152,154,158,164)]))
+MDADI_FUNCTIONAL = rowSums(Data[,c(149,155,160,161,166)])*100/(5*ncol(Data[,c(149,155,160,161,166)]))
+MDADI_PHYSICAL = rowSums(Data[,c(150,153,156,157,159,162,163,165)])*100/(5*ncol(Data[,c(150,153,156,157,159,162,163,165)]))
+
+MDADI_Names = c("MDADI_GENERAL","MDADI_COMPOSITE","MDADI_EMOTIONAL","MDADI_FUNCTIONAL","MDADI_PHYSICAL")
+MDADI_Combined = cbind(MDADI_GENERAL, MDADI_COMPOSITE, MDADI_EMOTIONAL, MDADI_FUNCTIONAL, MDADI_PHYSICAL)
+colnames(MDADI_Combined) = MDADI_Names
+
+#XQ Kamal et al. Strong positive correlation between XQ and MDASI_DryMouth Scores, using 6 (i.e. 60 on XQ normalized to 100) as a cutoff value here to start; also consider looking at raw numerical values.
+XQ_Eat = Data[,323]
+XQ_TOTAL = rowSums(Data[,c(175:182)])*100/80
+
+```
+
+```{r}
+# write.csv(MDADI_COMPOSITE, 'MDADI_COMPOSITE.csv', row.names = FALSE)
+# write.csv(MDADI_GENERAL, 'MDADI_GENERAL.csv', row.names = FALSE)
+# write.csv(MDADI_EMOTIONAL, 'MDADI_EMOTIONAL.csv', row.names = FALSE)
+# write.csv(MDADI_FUNCTIONAL, 'MDADI_FUNCTIONAL.csv', row.names = FALSE)
+# write.csv(MDADI_PHYSICAL, 'MDADI_PHYSICAL.csv', row.names = FALSE)
+
+#### FILES BELOW CONTAIN CATEGORIES ABOVE ####
+# write.csv(MDADI_Combined, 'MDADI_Combined.csv', row.names = FALSE)
+# 
+# write.csv(MDASI_Combined, 'MDASI_Combined.csv', row.names = FALSE)
+# 
+# write.csv(XQ_TOTAL, 'XQ_TOTAL.csv', row.names = FALSE)
+
+```
+
+```{r}
+CategoricalMDASI_All <- function(InputVec)
+{
+  OutputVec = rep(NA,length(InputVec))
+
+  for (i in 1:length(InputVec))
+  {
+    if (is.na(InputVec[i])){
+      OutputVec[i] <- NA
+    } else if (InputVec[i] == 0){
+      OutputVec[i] <- "None"
+    } else if ((InputVec[i] >= 1) & (InputVec[i] < 5)) {
+      OutputVec[i] <- "Mild"
+    } else if ((InputVec[i] >= 5) & (InputVec[i] < 7)) {
+      OutputVec[i] <- "Moderate"
+    } else if (InputVec[i] >= 7) {
+      OutputVec[i] <- "Severe"
+    }
+  }
+
+  return(OutputVec)
+}
+```
+
+```{r}
+
+```
+
+```{r}
+CategoricalMDASI_AllDisc <- function(InputVec)
+{
+  OutputVec = rep(NA,length(InputVec))
+
+  for (i in 1:length(InputVec))
+  {
+    if (is.na(InputVec[i])){
+      OutputVec[i] <- NA
+    } else if (InputVec[i] == 0){
+      OutputVec[i] <- 1
+    } else if ((InputVec[i] >= 1) & (InputVec[i] < 5)) {
+      OutputVec[i] <- 2
+    } else if ((InputVec[i] >= 5) & (InputVec[i] < 7)) {
+      OutputVec[i] <- 3
+    } else if (InputVec[i] >= 7) {
+      OutputVec[i] <- 4
+    }
+  }
+
+  return(OutputVec)
+}
+```
+
+```{r}
+CategoricalMDASI_NMvsMS <- function(InputVec)
+{
+  OutputVec = rep(NA,length(InputVec))
+
+  for (i in 1:length(InputVec))
+  {
+    if (is.na(InputVec[i])){
+      OutputVec[i] <- NA
+    } else if (InputVec[i] < 5){
+      OutputVec[i] <- "NoneMild"
+    } else if (InputVec[i] >= 5) {
+      OutputVec[i] <- "ModSevere"
+    }
+  }
+
+  return(OutputVec)
+}
+```
+
+```{r}
+CategoricalMDADI_NMvsMS <- function(InputVec)
+{
+  OutputVec = rep(NA,length(InputVec))
+
+  for (i in 1:length(InputVec))
+  {
+    if (is.na(InputVec[i])){
+      OutputVec[i] <- NA
+    } else if (InputVec[i] < 40){
+      OutputVec[i] <- "NoneMild"
+    } else if (InputVec[i] >= 40) {
+      OutputVec[i] <- "ModSevere"
+    }
+  }
+
+  return(OutputVec)
+}
+```
+
+```{r}
+CategoricalXQ_NMvsMS <- function(InputVec)
+{
+  OutputVec = rep(NA,length(InputVec))
+
+  for (i in 1:length(InputVec))
+  {
+    if (is.na(InputVec[i])){
+      OutputVec[i] <- NA
+    } else if (InputVec[i] < 60){
+      OutputVec[i] <- "NoneMild"
+    } else if (InputVec[i] >= 60) {
+      OutputVec[i] <- "ModSevere"
+    }
+  }
+
+  return(OutputVec)
+}
+```
+
+Kruskal-Wallis and Fisher's Exact test on clinical parameters
+
+```{r}
+QualVar = cbind(Gender,CancerSite,Tstage,Nstage,ChemoAgent,P16status,AlcoholIntake,SmokingHistory,PEGorNG)
+#QualVar = cbind(Gender,CancerSite,Tstage,Nstage,ChemoAgent,P16status,AlcoholIntake,SmokingHistory)
+#QuantVar = cbind(MonthsSinceTx,Age,ECOG,CharlsonScore,InitialBMI,ChangeBMI,DuringTxMonitoring,VolumeInitial,VolumeChange,CentreOfMass,PlannedRawNum,DeliveredRawNum)
+QuantVar = cbind(MonthsSinceTx,Age,ECOG,CharlsonScore,InitialBMI,ChangeBMI)
+#QoLMat = MDASI_Combined#[,(29:32)]
+QoLMat = cbind(XQ_TOTAL,MDADI_Combined)
+pSig = c("QoL","Var","p-Correct")
+pMatAll = c("QoL","Var","p-val")
+#for (i in 1:1)#ncol(QoLMat))
+for (i in ncol(QoLMat))
+{
+  pMat = c("QoL","Var","p-val")
+  
+  #ind = which((!is.na(PlannedOAR_Combined[,j])) & (!is.na(QoLMat[,i])))
+  
+  #QoLVec = CategoricalMDASI_NMvsMS(QoLMat[,i])
+  #QoLVec = CategoricalMDADI_NMvsMS(QoLMat[,i])
+  #QoLVec = CategoricalXQ_NMvsMS(QoLMat[,i])
+  QoLVec = CategoricalMDASI_All(QoLMat[,i])
+  
+  #timeVec = rep("Early",length(QoLVec))
+  #timeVec[which(MonthsSinceTx >= 12)] = rep("Late",length(which(MonthsSinceTx >= 12)))
+  #combineVec = rep(NA,length(QoLVec))
+  
+  #for (k in 1:length(QoLVec))
+  #{
+  #  combineVec[k] = paste(QoLVec[k],timeVec[k])
+  #}
+  
+  #QoLVec = combineVec
+  #inds = which(timeVec == "Late")
+  dfTemp = as.data.frame(cbind(QuantVar,QoLVec))
+  for (j in 1:ncol(QuantVar))
+  {
+    kruskalResult = kruskal.test(QuantVar[,j] ~ QoLVec,data = dfTemp)
+    pMat <- rbind(pMat,c(colnames(QoLMat)[i],colnames(QuantVar)[j],kruskalResult$p.value))
+  }
+  for (k in 1:ncol(QualVar))
+  {
+    fisherResult = fisher.test(QualVar[,k],QoLVec,simulate.p.value = TRUE)#,workspace=2e7)
+    pMat <- rbind(pMat,c(colnames(QoLMat)[i],colnames(QualVar)[k],fisherResult$p.value)) 
+  }
+  
+  pMatAll = rbind(pMatAll,pMat)
+  pVec = p.adjust(pMat[2:nrow(pMat),3],method = "BH")
+  pSig = rbind(pSig,pMat[which(pVec <= 0.05)+1,])
+  #pSig = rbind(pSig,pMat[which(pMat[,3] <= 0.05),])
+}
+pSig
+pMatAll
+```
+Kruskal-Wallis and Fisher's Exact test on geometric parameters
+
+```{r}
+DuringTxMonitoring = Data[,c(16:25)]
+
+VolumeInitial = Data[,c(26:29)]
+VolumeChange = Data[,c(30:33)]
+VolumeDelivered = VolumeInitial + VolumeChange
+
+CentreOfMass = Data[,c(34:34:39)]
+
+QoLMat = MDASI_Combined[,(29:32)]
+QuantVar = cbind(DuringTxMonitoring,VolumeInitial,VolumeChange,VolumeDelivered,CentreOfMass)
+
+pSig = c("QoL","Var","p-Correct")
+pMatAll = c("QoL","Var","p-val")
+for (i in 1:ncol(QoLMat))
+{
+  pMat = c("QoL","Var","p-val")
+  
+  #ind = which((!is.na(PlannedOAR_Combined[,j])) & (!is.na(QoLMat[,i])))
+  
+  QoLVec = CategoricalMDASI_NMvsMS(QoLMat[,i])
+  #QoLVec = CategoricalMDASI_All(QoLMat[,i])
+  
+  #timeVec = rep("Early",length(QoLVec))
+  #timeVec[which(MonthsSinceTx >= 12)] = rep("Late",length(which(MonthsSinceTx >= 12)))
+  #combineVec = rep(NA,length(QoLVec))
+  
+  #for (k in 1:length(QoLVec))
+  #{
+  #  combineVec[k] = paste(QoLVec[k],timeVec[k])
+  #}
+  
+  #QoLVec = combineVec
+  #inds = which(timeVec == "Late")
+  
+  dfTemp = as.data.frame(cbind(QuantVar,QoLVec))
+  for (j in 1:ncol(QuantVar))
+  {
+    kruskalResult = kruskal.test(QuantVar[,j] ~ QoLVec,data = dfTemp)
+    pMat <- rbind(pMat,c(colnames(QoLMat)[i],colnames(QuantVar)[j],kruskalResult$p.value))
+  }
+  pMatAll = rbind(pMatAll,pMat)
+  pVec = p.adjust(pMat[2:nrow(pMat),3],method = "BH")
+  pSig = rbind(pSig,pMat[which(pVec <= 0.05)+1,])
+  #pSig = rbind(pSig,pMat[which(pMat[,3] <= 0.05),])
+}
+pSig
+```
+
+
+Correlations - Numeric vs. Numeric
+
+```{r}
+PGInitMin = apply(cbind(ParotidContInitDmean,ParotidIpsInitDmean),1,min)
+PGDelMin = apply(cbind(ParotidContDelDmean,ParotidIpsDelDmean),1,min)
+
+#PlannedOAR_Combined = cbind(ParotidContInitDmean,ParotidIpsInitDmean,PharynxConstrInitDmean,SpinalCordInitD0.03cc,BrainStemInitD0.03cc)
+#PlannedOAR_Combined = cbind(ParotidContDelDmean,ParotidIpsDelDmean,PharynxConstrDelDmean,SpinalCordDelD0.03cc,BrainStemDelD0.03cc)
+#OAR_Names = cbind("ParotidCont","ParotidIps","PharynxConstr","SpinalCord","BrainStem")
+
+#PlannedOAR_Combined = cbind(PGInitMin,PharynxConstrInitDmean,SpinalCordInitD0.03cc,BrainStemInitD0.03cc)
+PlannedOAR_Combined = cbind(PGDelMin,PharynxConstrDelDmean,SpinalCordDelD0.03cc,BrainStemDelD0.03cc)
+OAR_Names = cbind("ParotidMin","PharynxConstr","SpinalCord","BrainStem")
+
+#PlannedOAR_Combined = cbind(ParotidGlands_Endpoint_VIOL,PharyngealConstrictor_Endpoint_VIOL,BrainstemSpinalCord_Endpoint_VIOL)
+#OAR_Names = cbind("Xerostomia","Dysphagia","Safety")
+
+#QoL_Select = MDASI_Combined#[,(29:32)]
+QoL_Select = cbind(XQ_TOTAL,MDADI_Combined)
+#QoL_Select = cbind(MDADI_Combined)
+
+pMat = c("OAR","QoL","p-val")
+tauMat = c("OAR","QoL","tau")
+for (i in 1:ncol(QoL_Select))
+{
+  for (j in 1:1)#1:ncol(PlannedOAR_Combined))
+  {
+    ind = which((!is.na(PlannedOAR_Combined[,j])) & (!is.na(QoL_Select[,i])))
+    corResult = cor.test(QoL_Select[ind,i],PlannedOAR_Combined[ind,j],method = "kendall")
+    pMat <- rbind(pMat,c(OAR_Names[j],colnames(QoL_Select)[i],corResult$p.value))
+    tauMat <- rbind(tauMat,c(OAR_Names[j],colnames(QoL_Select)[i],corResult$estimate))
+  }
+}
+pMatAdjust = cbind(pMat,p.adjust(pMat[,3],method = "BH"))
+pMatAdjust[which(pMatAdjust[,4]<=0.05),]
+pMatAdjust
+
+#hist(as.numeric(tauMat[,3]))
+```
+
+Numeric Dose and Categorical QoL
+
+```{r}
+PGInitMin = apply(cbind(ParotidContInitDmean,ParotidIpsInitDmean),1,min)
+PGDelMin = apply(cbind(ParotidContDelDmean,ParotidIpsDelDmean),1,min)
+
+PlannedOAR_Combined = cbind(ParotidContInitDmean,ParotidIpsInitDmean,PharynxConstrInitDmean,SpinalCordInitD0.03cc,BrainStemInitD0.03cc)
+#PlannedOAR_Combined = cbind(ParotidContDelDmean,ParotidIpsDelDmean,PharynxConstrDelDmean,SpinalCordDelD0.03cc,BrainStemDelD0.03cc)
+OAR_Names = cbind("ParotidCont","ParotidIps","PharynxConstr","SpinalCord","BrainStem")
+
+#PlannedOAR_Combined = cbind(PGInitMin,PharynxConstrInitDmean,SpinalCordInitD0.03cc,BrainStemInitD0.03cc)
+#PlannedOAR_Combined = cbind(PGDelMin,PharynxConstrDelDmean,SpinalCordDelD0.03cc,BrainStemDelD0.03cc)
+#OAR_Names = cbind("ParotidMin","PharynxConstr","SpinalCord","BrainStem")
+
+#PlannedOAR_Combined = cbind(ParotidGlands_Endpoint_VIOL,PharyngealConstrictor_Endpoint_VIOL,BrainstemSpinalCord_Endpoint_VIOL)
+#OAR_Names = cbind("Xerostomia","Dysphagia","Safety")
+
+#QoL_Select = MDASI_Combined[,(29:32)]
+QoL_Select = MDASI_Combined[,(14:22)]
+
+pMatMANOVA = c("QoL","p-val")
+pMat = c("OAR","QoL","p-val")
+for (i in 1:ncol(QoL_Select))
+{
+  for (j in 3:3)#1:ncol(PlannedOAR_Combined))
+  {
+    ind = which((!is.na(PlannedOAR_Combined[,j])) & (!is.na(QoL_Select[,i])))# & (MonthsSinceTx >= 12))
+    
+    timeVec = rep("Early",nrow(QoL_Select))
+    timeVec[which(MonthsSinceTx >= 12)] = rep("Late",length(which(MonthsSinceTx >= 12)))
+    timeVec = timeVec[ind]
+      
+    #catVec = CategoricalMDASI_All(QoL_Select[ind,i])
+    catVec = CategoricalMDASI_NMvsMS(QoL_Select[ind,i])
+    
+    combineVec = rep(NA,length(ind))
+  
+    for (k in 1:length(ind))
+    {
+      combineVec[k] = paste(catVec[k],timeVec[k])
+    }
+    #catVec = combineVec
+      
+    tempVec = PlannedOAR_Combined[ind,j]
+    df = as.data.frame(cbind(tempVec,catVec))
+    kruskalResult = kruskal.test(tempVec ~ catVec,data = df)
+    pMat <- rbind(pMat,c(OAR_Names[j],colnames(QoL_Select)[i],kruskalResult$p.value))
+  }
+}
+
+pMatAdjust = cbind(pMat,p.adjust(pMat[,3],method = "BH"))
+pMatAdjust[which(pMatAdjust[,4]<=0.05),]
+pMatAdjust
+```
+
+```{r}
+
+PlannedRawNum = Data[,c(40,43,46,49,52,55,58,61,64)]
+PlannedViolBinary = Data[,c(41,44,47,50,53,56,59,62,65)]
+PlannedViolNum = Data[,c(42,45,48,51,54,57,60,63,66)]
+
+DeliveredChange = Data[,c(67:75)]
+DeliveredRawNum = Data[,c(76,79,82,85,88,91,94,97,100)]
+DeliveredViolBinary = Data[,c(77,80,83,86,89,92,95,98,101)]
+DeliveredViolNum = Data[,c(78,81,84,87,90,93,96,99,102)]
+
+inputMat = na.roughfix(cbind(DeliveredChange))
+#inputMatDisc = matrix(NA,nrow = nrow(inputMat),ncol = ncol(inputMat))
+
+#for (i in 1:ncol(inputMat))
+#{
+#  inputMatDisc[,i] = CategoricalMDASI_AllDisc(inputMat[,i])
+#  #inputMatDisc[,i] = CategoricalMDASI_NMvsMS(inputMat[,i])
+#}
+
+distMat <- dist(inputMat,method = "euclidean")
+#distMat <- dist(inputMatDisc,method = "euclidean")
+hclust_patients <- hclust(distMat,method = "ward.D2")
+plot(hclust_patients)
+rowDend = as.dendrogram(hclust_patients)
+rowColor = brewer.pal(n = 5,name = "Blues")
+rowColor = rev(colorRampPalette(rowColor)(5))
+
+rowDend <- color_branches(rowDend,k = 4,col = rowColor)
+
+distMat_patients <- dist(t(inputMat),method = "euclidean")
+#distMat_patients <- dist(t(inputMatDisc),method = "euclidean")
+hclust_questions <- hclust(distMat_patients,method = "ward.D2")
+plot(hclust_questions)
+colDend = as.dendrogram(hclust_questions)
+#colDend = set(as.dendrogram(hclust_questions),"branches_lwd",2)
+colColor = brewer.pal(n = 7,name = "Oranges")
+colColor = rev(colorRampPalette(colColor)(7))
+colDend <- color_branches(colDend,k = 5, col = colColor)
+
+myPal <- colorRampPalette(c("white","black"))(n = 20)
+#myPal <- c("#191970","#00897b","#ed6a47","#c2002c")
+heatmap.2(as.matrix(inputMat),trace = "none",Rowv = rowDend,Colv = colDend,margins = c(12,8),col = myPal)
+```
+
+```{r}
+#inputMat = na.roughfix(MDASI_Combined[,c(1:28)])
+inputMat = na.roughfix(MDASI_Combined)
+#inputMat = na.roughfix(MDASI_Combined[which(MonthsSinceTx >= 12),c(1:28)])
+#inputMat = na.roughfix(cbind(MDASI_Combined,MDADI_Combined,XQ_TOTAL))
+inputMatDisc = matrix(NA,nrow = nrow(inputMat),ncol = ncol(inputMat))
+
+for (i in 1:ncol(inputMat))
+{
+  inputMatDisc[,i] = CategoricalMDASI_AllDisc(inputMat[,i])
+  #inputMatDisc[,i] = CategoricalMDASI_NMvsMS(inputMat[,i])
+}
+
+#distMat <- dist(inputMat,method = "euclidean")
+distMat <- dist(inputMatDisc,method = "euclidean")
+hclust_patients <- hclust(distMat,method = "ward.D2")
+plot(hclust_patients)
+rowDend = as.dendrogram(hclust_patients)
+rowColor = brewer.pal(n = 4,name = "Greys")
+rowColor = rev(colorRampPalette(rowColor)(4))
+
+rowDend <- color_branches(rowDend,k = 3,col = rowColor)
+
+#distMat_patients <- dist(t(inputMat),method = "euclidean")
+distMat_patients <- dist(t(inputMatDisc),method = "euclidean")
+hclust_questions <- hclust(distMat_patients,method = "ward.D")
+plot(hclust_questions)
+colDend = as.dendrogram(hclust_questions)
+#colDend = set(as.dendrogram(hclust_questions),"branches_lwd",2)
+colColor = brewer.pal(n = 6,name = "Greys")
+colColor = rev(colorRampPalette(colColor)(7))
+colDend <- color_branches(colDend,k = 6, col = colColor)
+
+#myPal <- colorRampPalette(c("white","black"))(n = 4)
+myPal <- c("#191970","#00897b","#ed6a47","#c2002c")
+heatmap.2(as.matrix(inputMat),trace = "none",Rowv = rowDend,Colv = colDend,margins = c(12,8),col = myPal)
+```
+
+```{r}
+colType = c("numeric","numeric","factor")
+ClustAssign <- read.csv("Clustering_MDASIsubgroupsItems_Ordered.csv", header = TRUE, colClasses = colType)
+attach(ClustAssign)
+```
+
+Kruskal-Wallis and Fisher's Exact test on clinical parameters
+
+```{r}
+QualVar = cbind(Gender,CancerSite,Tstage,Nstage,ChemoAgent,P16status,AlcoholIntake,SmokingHistory,PEGorNG)
+#QualVar = cbind(Gender,CancerSite,Tstage,Nstage,ChemoAgent,P16status,AlcoholIntake,SmokingHistory)
+#QuantVar = cbind(MonthsSinceTx,Age,ECOG,CharlsonScore,InitialBMI,ChangeBMI,DuringTxMonitoring,VolumeInitial,VolumeChange,CentreOfMass,PlannedRawNum,DeliveredRawNum)
+QuantVar = cbind(MonthsSinceTx,Age,ECOG,CharlsonScore,InitialBMI,ChangeBMI)
+QoLMat = MDASI_Combined#[,(29:32)]
+
+pSig = c("QoL","Var","p-Correct")
+pMatAll = c("QoL","Var","p-val")
+for (i in 1:ncol(QoLMat))
+{
+  pMat = c("QoL","Var","p-val")
+  
+  #ind = which((!is.na(PlannedOAR_Combined[,j])) & (!is.na(QoLMat[,i])))
+  
+  #QoLVec = CategoricalMDASI_NMvsMS(QoLMat[,i])
+  #QoLVec = CategoricalMDASI_All(QoLMat[,i])
+  QoLVec = ClustAssign[,3]
+  
+  #timeVec = rep("Early",length(QoLVec))
+  #timeVec[which(MonthsSinceTx >= 12)] = rep("Late",length(which(MonthsSinceTx >= 12)))
+  #combineVec = rep(NA,length(QoLVec))
+  
+  #for (k in 1:length(QoLVec))
+  #{
+  #  combineVec[k] = paste(QoLVec[k],timeVec[k])
+  #}
+  
+  #QoLVec = combineVec
+  #inds = which(timeVec == "Late")
+  
+  dfTemp = as.data.frame(cbind(QuantVar,QoLVec))
+  for (j in 1:ncol(QuantVar))
+  {
+    kruskalResult = kruskal.test(QuantVar[,j] ~ QoLVec,data = dfTemp)
+    pMat <- rbind(pMat,c(colnames(QoLMat)[i],colnames(QuantVar)[j],kruskalResult$p.value))
+  }
+  for (k in 1:ncol(QualVar))
+  {
+    fisherResult = fisher.test(QualVar[,k],QoLVec,simulate.p.value = TRUE)#,workspace=2e7)
+    pMat <- rbind(pMat,c(colnames(QoLMat)[i],colnames(QualVar)[k],fisherResult$p.value)) 
+  }
+  
+  pMatAll = rbind(pMatAll,pMat)
+  pVec = p.adjust(pMat[2:nrow(pMat),3],method = "BH")
+  pSig = rbind(pSig,pMat[which(pVec <= 0.05)+1,])
+  #pSig = rbind(pSig,pMat[which(pMat[,3] <= 0.05),])
+}
+pMatAll
+pSig
+```
+
+Numeric Dose and Cluster QoL
+
+```{r}
+PGInitMin = apply(cbind(ParotidContInitDmean,ParotidIpsInitDmean),1,min)
+PGDelMin = apply(cbind(ParotidContDelDmean,ParotidIpsDelDmean),1,min)
+
+#PlannedOAR_Combined = cbind(ParotidContInitDmean,ParotidIpsInitDmean,PharynxConstrInitDmean,SpinalCordInitD0.03cc,BrainStemInitD0.03cc)
+PlannedOAR_Combined = cbind(ParotidContDelDmean,ParotidIpsDelDmean,PharynxConstrDelDmean,SpinalCordDelD0.03cc,BrainStemDelD0.03cc)
+OAR_Names = cbind("ParotidCont","ParotidIps","PharynxConstr","SpinalCord","BrainStem")
+
+#PlannedOAR_Combined = cbind(PGInitMin,PharynxConstrInitDmean,SpinalCordInitD0.03cc,BrainStemInitD0.03cc)
+#PlannedOAR_Combined = cbind(PGDelMin,PharynxConstrDelDmean,SpinalCordDelD0.03cc,BrainStemDelD0.03cc)
+#OAR_Names = cbind("ParotidMin","PharynxConstr","SpinalCord","BrainStem")
+
+#PlannedOAR_Combined = cbind(ParotidGlands_Endpoint_VIOL,PharyngealConstrictor_Endpoint_VIOL,BrainstemSpinalCord_Endpoint_VIOL)
+#OAR_Names = cbind("Xerostomia","Dysphagia","Safety")
+
+#QoL_Select = MDASI_Combined[,(29:32)]
+QoL_Select = MDASI_Combined
+#QoL_Select = MDASI_Combined[,(14:22)]
+
+pMatMANOVA = c("QoL","p-val")
+pMat = c("OAR","QoL","p-val")
+for (i in 1:ncol(QoL_Select))
+{
+  for (j in 1:ncol(PlannedOAR_Combined))
+  {
+    ind = which((!is.na(PlannedOAR_Combined[,j])) & (!is.na(QoL_Select[,i])) & (MonthsSinceTx >= 12))
+    
+    #timeVec = rep("Early",nrow(QoL_Select))
+    #timeVec[which(MonthsSinceTx >= 12)] = rep("Late",length(which(MonthsSinceTx >= 12)))
+    #timeVec = timeVec[ind]
+      
+    #catVec = CategoricalMDASI_All(QoL_Select[ind,i])
+    #catVec = CategoricalMDASI_NMvsMS(QoL_Select[ind,i])
+    catVec = ClustAssign[ind,3]
+    
+    #combineVec = rep(NA,length(ind))
+  
+    #for (k in 1:length(ind))
+    #{
+    #  combineVec[k] = paste(catVec[k],timeVec[k])
+    #}
+    #catVec = combineVec
+      
+    tempVec = QoL_Select[ind,i]
+    #tempVec = PlannedOAR_Combined[ind,j]
+    df = as.data.frame(cbind(tempVec,catVec))
+    kruskalResult = kruskal.test(tempVec ~ catVec,data = df)
+    pMat <- rbind(pMat,c(OAR_Names[j],colnames(QoL_Select)[i],kruskalResult$p.value))
+  }
+}
+
+pMatAdjust = cbind(pMat,p.adjust(pMat[,3],method = "BH"))
+pMatAdjust[which(pMatAdjust[,4]<=0.05),]
+pMatAdjust
+```
